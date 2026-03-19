@@ -1,0 +1,179 @@
+# EMR System - Electronic Medical Records
+# Complete Docker Compose Configuration
+# Includes: PostgreSQL, Redis, Backend API, Frontend, pgAdmin
+# 
+# Usage:
+#   start.bat start     - Start all services
+#   start.bat stop      - Stop all services  
+#   start.bat restart   - Restart all services
+#   start.bat clean     - Clean all Docker resources
+#   start.bat admin     - Create admin user
+#
+# URLs:
+#   Frontend: http://localhost:3000
+#   Backend:  http://localhost:3001
+#   pgAdmin:  http://localhost:8080
+#
+# Default Admin Account:
+#   Username: admin
+#   Password: admin123
+#   Email: admin@admin.com
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: emr_postgres
+    environment:
+      POSTGRES_DB: emr_development
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+      TZ: Asia/Bangkok
+      TIMEZONE: Asia/Bangkok
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - project_emr_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d emr_development"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: emr_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - project_emr_network
+    restart: unless-stopped
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: emr_backend
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: emr_development
+      DB_USER: postgres
+      DB_PASSWORD: 12345
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-super-secret-jwt-key-change-this-in-production-2025
+      JWT_REFRESH_SECRET: your-super-secret-refresh-key-change-this-in-production-2025
+      # Migration settings
+      MIGRATION_RETRY_COUNT: 5
+      MIGRATION_RETRY_DELAY: 3000
+      DB_CONNECTION_TIMEOUT: 30000
+      # AI and notification settings
+      AI_RISK_ASSESSMENT_ENABLED: true
+      AI_DIABETES_PREDICTION_ENABLED: true
+      NOTIFICATION_SYSTEM_ENABLED: true
+      # External Requester System settings
+      EXTERNAL_REQUESTER_SYSTEM_ENABLED: true
+      CONSENT_MANAGEMENT_ENABLED: true
+      # Email and SMS notification settings
+      EMAIL_NOTIFICATIONS_ENABLED: true
+      SMS_NOTIFICATIONS_ENABLED: true
+      IN_APP_NOTIFICATIONS_ENABLED: true
+      # SMTP Configuration (ตั้งค่าจริงสำหรับส่งอีเมล)
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: tt.teerapattan@gmail.com
+      SMTP_PASSWORD: xnqt crbm onze hcdx
+      EMAIL_FROM: tt.teerapattan@gmail.com
+      # Health check settings
+      HEALTH_CHECK_INTERVAL: 30000
+      HEALTH_CHECK_TIMEOUT: 10000
+      # Timezone settings
+      TZ: Asia/Bangkok
+      TIMEZONE: Asia/Bangkok
+      # Character encoding settings
+      LANG: th_TH.UTF-8
+      LC_ALL: th_TH.UTF-8
+      NODE_ENCODING: utf8
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - project_emr_network
+    restart: unless-stopped
+    command: sh -c "npm run start:with-migrations:dev"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: emr_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:3001
+      BACKEND_URL: http://emr_backend:3001
+      TZ: Asia/Bangkok
+      TIMEZONE: Asia/Bangkok
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - project_emr_network
+    restart: unless-stopped
+    command: npm run dev
+
+  # pgAdmin Database Management
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - project_emr_network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+
+networks:
+  project_emr_network:
+    driver: bridge
